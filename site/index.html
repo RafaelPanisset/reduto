@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reduto: de onde vêm os votos dos deputados</title>
+  <meta name="description" content="Para cada candidato a deputado em 2026: de qual cidade vieram os votos. Dados oficiais do TSE.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%230f6e6a'/><circle cx='16' cy='16' r='5' fill='white'/></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="wrap">
+    <p class="kicker">Eleições 2026 · 1º turno</p>
+    <h1>Reduto</h1>
+    <p class="lede">De onde vieram os votos de cada candidato a deputado. Tem quem foi eleito por uma cidade só.</p>
+
+    <div class="search" role="search">
+      <label for="q" class="sr-only">Buscar candidato</label>
+      <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Digite o nome de um candidato a deputado"
+             role="combobox" aria-expanded="false" aria-controls="suggestions" aria-autocomplete="list" disabled>
+      <ul id="suggestions" role="listbox" hidden></ul>
+    </div>
+    <p class="hint" id="hint">Carregando os dados…</p>
+  </header>
+
+  <main class="wrap">
+    <section id="candidate" hidden aria-live="polite"></section>
+
+    <section id="rankings" hidden>
+      <h2>Rankings dos eleitos</h2>
+      <p class="insight" id="insight"></p>
+      <div class="controls">
+        <div class="tabs" role="tablist" id="tabs"></div>
+        <div class="filters">
+          <label>Cargo
+            <select id="f-office">
+              <option value="6">Deputado federal</option>
+              <option value="7">Deputado estadual</option>
+            </select>
+          </label>
+          <label>Estado
+            <select id="f-uf"><option value="">Todos</option></select>
+          </label>
+        </div>
+      </div>
+      <p class="help" id="ranking-help"></p>
+      <ol class="ranking" id="ranking"></ol>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <h2>Como foi feito</h2>
+    <p>Contamos os votos nominais válidos do 1º turno de 4 de outubro de 2026, município por município. Não entram votos de legenda, brancos e nulos. O <strong>reduto</strong> é o município onde o candidato teve mais votos.</p>
+    <p>O <strong>"Por que aqui?"</strong> cruza cada candidato com os cadastros das eleições municipais de 2020 e 2024 pelo nome completo e pela data de nascimento (o TSE não divulga o CPF em 2024). Mostra só o que o TSE registra: quem disputou o quê, onde, e quem foi eleito prefeito. O "mesmo partido" compara a sigla do prefeito eleito em 2024 com a do candidato em 2026.</p>
+    <p>O Distrito Federal tem um município só e não tem eleição municipal, então fica fora dos rankings.</p>
+    <p>Fontes: <a href="https://dadosabertos.tse.jus.br/">TSE, dados abertos</a> (votação por município e zona; cadastro de candidatos), <span id="generated"></span> e <a href="https://servicodados.ibge.gov.br/api/docs/malhas">IBGE, malhas municipais</a>. Código no <a href="https://github.com/RafaelPanisset/reduto">GitHub</a>.</p>
+  </footer>
+
+  <script src="vendor/d3-array.min.js"></script>
+  <script src="vendor/d3-geo.min.js"></script>
+  <script src="vendor/topojson-client.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+# Dados baixados (centenas de MB) e dados gerados: refeitos por scripts/fetch.sh e pelo build.
+/raw/
+/site/data/
+/site/data.tmp/

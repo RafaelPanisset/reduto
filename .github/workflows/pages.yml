@@ -1,0 +1,44 @@
+# Gera os dados do site a partir dos arquivos oficiais do TSE e do IBGE e publica no GitHub
+# Pages. Os dados gerados (~18 mil arquivos) não ficam no repositório: qualquer pessoa pode
+# refazê-los a partir das fontes com os mesmos dois comandos.
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+      - run: ./scripts/fetch.sh
+      - run: go run ./cmd/reduto
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
