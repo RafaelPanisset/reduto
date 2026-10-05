@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -123,10 +124,15 @@ func TestReadPeople(t *testing.T) {
 	}
 }
 
-const municipalHeader = `"SQ_CANDIDATO";"NR_TURNO";"SG_UF";"SG_UE";"NM_UE";"CD_CARGO";"SG_PARTIDO";"DS_SIT_TOT_TURNO";"NM_URNA_CANDIDATO";"NM_CANDIDATO";"DT_NASCIMENTO";"DS_GENERO"` + "\n"
+const municipalHeader = `"SQ_CANDIDATO";"NR_TURNO";"SG_UF";"SG_UE";"NM_UE";"CD_CARGO";"SG_PARTIDO";"DS_SIT_TOT_TURNO";"NM_URNA_CANDIDATO";"NM_CANDIDATO";"DT_NASCIMENTO";"DS_GENERO";"DT_ELEICAO";"CD_TIPO_ELEICAO"` + "\n"
 
 func municipalRow(id, round, city, office, status string) string {
-	return id + ";" + round + `;"SP";"` + city + `";"S` + "\xc3" + `O PAULO";` + office + `;"PL";"` + status + `";"URNA";"NOME";"01/01/1980";"MASCULINO"` + "\n"
+	return municipalRowOn(id, round, city, office, status, "06/10/2024", "2")
+}
+
+func municipalRowOn(id, round, city, office, status, date, kind string) string {
+	return id + ";" + round + `;"SP";"` + city + `";"S` + "\xc3" + `O PAULO";` + office + `;"PL";"` + status +
+		`";"URNA";"NOME";"01/01/1980";"MASCULINO";"` + date + `";` + kind + "\n"
 }
 
 func TestReadMunicipal(t *testing.T) {
@@ -136,33 +142,49 @@ func TestReadMunicipal(t *testing.T) {
 		municipalRow("2", "1", "1007", "13", "ELEITO POR QP") +
 		municipalRow("3", "1", "71072", "13", "SUPLENTE") +
 		municipalRow("4", "1", "71072", "13", "#NULO#") + // candidatura que não valeu
-		municipalRow("5", "1", "71072", "12", "N\xc3O ELEITO")
+		municipalRow("5", "1", "71072", "12", "N\xc3O ELEITO") +
+		municipalRowOn("6", "1", "71072", "11", "ELEITO", "07/06/2026", "1") // suplementar de 2026 no arquivo de 2024
 	path := writeZip(t, map[string]string{"consulta_cand_2024_BRASIL.csv": csv})
-	runs, err := ReadMunicipal(path)
+	runs, err := ReadMunicipal(path, func(r Run) bool { return r.ID != "5" })
 	if err != nil {
 		t.Fatal(err)
 	}
+	ids := []string{}
+	for _, r := range runs {
+		ids = append(ids, r.ID)
+	}
+	if !slices.Equal(ids, []string{"1", "2", "3", "6"}) {
+		t.Fatalf("IDs = %v, quero 1 2 3 6 em ordem (sem a indeferida 4 e sem a 5, que o keep recusou)", ids)
+	}
+	if r := runs[3]; r.Year != 2026 || !r.Supplementary || !r.Date.Equal(time.Date(2026, 6, 7, 3, 0, 0, 0, time.UTC)) {
+		t.Errorf("suplementar = %+v, quero ano 2026 (o da eleição, não o do arquivo)", r)
+	}
 	got := map[string]Run{}
 	for _, r := range runs {
-		got[r.Status+"/"+strconv.Itoa(r.Office)] = r
+		got[r.Status+"/"+strconv.Itoa(r.Office)+"/"+strconv.Itoa(r.Year)] = r
 	}
-	if len(runs) != 4 {
-		t.Fatalf("candidaturas = %d, quero 4: %+v", len(runs), runs)
-	}
-	mayor := got["ELEITO/11"]
-	want := Run{Year: 2024, City: "71072", CityName: "SÃO PAULO", UF: "SP", Office: Mayor, Party: "PL", Elected: true,
+	mayor := got["ELEITO/11/2024"]
+	want := Run{ID: "1", Date: time.Date(2024, 10, 6, 3, 0, 0, 0, time.UTC), Year: 2024,
+		City: "71072", CityName: "SÃO PAULO", UF: "SP", Office: Mayor, Party: "PL", Elected: true,
 		Status: "ELEITO", Name: "URNA", FullName: "NOME", BirthDate: "01/01/1980", Gender: Male}
+	mayor.Date = mayor.Date.UTC()
 	if mayor != want {
 		t.Errorf("prefeito = %+v\nquero    %+v", mayor, want)
 	}
-	if r := got["ELEITO POR QP/13"]; !r.Elected || r.City != "01007" {
+	if r := got["ELEITO POR QP/13/2024"]; !r.Elected || r.City != "01007" {
 		t.Errorf("vereador eleito = %+v", r)
 	}
-	if r := got["SUPLENTE/13"]; r.Elected {
+	if r := got["SUPLENTE/13/2024"]; r.Elected {
 		t.Errorf("suplente = %+v", r)
 	}
-	if r := got["NÃO ELEITO/12"]; r.Elected || r.Office != ViceMayor {
-		t.Errorf("vice não eleito = %+v", r)
+}
+
+func TestPersonKey(t *testing.T) {
+	if a, b := PersonKey("José  da Conceição", "01/01/1980"), PersonKey("JOSE DA CONCEICAO", "01/01/1980"); a != b {
+		t.Errorf("chaves diferentes para a mesma pessoa: %q, %q", a, b)
+	}
+	if k := PersonKey("JOSE", ""); k != "" {
+		t.Errorf("sem data de nascimento a chave tem que ser vazia, veio %q", k)
 	}
 }
 

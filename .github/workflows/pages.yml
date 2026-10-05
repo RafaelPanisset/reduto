@@ -13,9 +13,10 @@ permissions:
   pages: write
   id-token: write
 
+# Um push novo espera o anterior terminar: cancelar no meio poderia interromper uma publicação.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -26,6 +27,16 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go test ./...
+      # raw/ (~470 MB) fica em cache. A chave muda toda semana, e no meio da semana o fetch.sh
+      # só baixa de novo o que o TSE tiver mudado (curl -z). Assim um push que só mexe no
+      # texto não depende do TSE estar no ar nem baixa tudo outra vez.
+      - id: week
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: raw
+          key: raw-${{ hashFiles('scripts/fetch.sh') }}-${{ steps.week.outputs.week }}
+          restore-keys: raw-${{ hashFiles('scripts/fetch.sh') }}-
       - run: ./scripts/fetch.sh
       - run: go run ./cmd/reduto
       - uses: actions/configure-pages@v6

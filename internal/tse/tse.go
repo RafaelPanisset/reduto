@@ -156,10 +156,13 @@ func readVotesFile(f *zip.File) (*Votes, error) {
 			return nil, fmt.Errorf("QT_VOTOS_NOMINAIS_VALIDOS %q: %w", get(colVotes), err)
 		}
 
+		// strings.Clone: com ReuseRecord, cada campo é um pedaço da linha inteira do CSV, e
+		// guardar o campo prenderia a linha toda na memória (são milhões de linhas).
 		id := get(colID)
 		if _, ok := out.Candidates[id]; !ok {
+			id = strings.Clone(id)
 			out.Candidates[id] = Candidate{
-				ID: id, UF: get(colUF), Office: office, Number: get(colNumber),
+				ID: id, UF: strings.Clone(get(colUF)), Office: office, Number: strings.Clone(get(colNumber)),
 				Name: latin1(get(colName)), Party: latin1(get(colParty)), Status: latin1(get(colStatus)),
 			}
 			if t, err := time.ParseInLocation("02/01/2006 15:04:05", get(colGenDate)+" "+get(colGenTime), brasilia); err == nil && t.After(out.GeneratedAt) {
@@ -169,9 +172,13 @@ func readVotesFile(f *zip.File) (*Votes, error) {
 		byCity := out.ByCity[id]
 		if byCity == nil {
 			byCity = map[string]int{}
-			out.ByCity[id] = byCity
+			out.ByCity[id] = byCity // id já é a cópia: byCity é nil só para candidato novo
 		}
-		byCity[cityCode(get(colCity))] += votes
+		city := cityCode(get(colCity))
+		if _, ok := byCity[city]; !ok {
+			city = strings.Clone(city)
+		}
+		byCity[city] += votes
 	}
 }
 

@@ -31,6 +31,7 @@ func TestTitleCase(t *testing.T) {
 		"MARIA E SILVA":          "Maria e Silva",
 		"DR. ÍTALO":              "Dr. Ítalo",
 		"SARGENTO MELLO-CASAL":   "Sargento Mello-Casal",
+		"PIO IX":                 "Pio IX",
 		"DA SILVA":               "Da Silva",
 	} {
 		if got := titleCase(in); got != want {
@@ -73,14 +74,15 @@ func fixture(t *testing.T) (Input, string) {
 		},
 		Runs: []tse.Run{
 			// Ana: acento e espaço a mais no nome não podem atrapalhar.
-			{Year: 2020, City: "00001", CityName: "CIDADE A", UF: "SE", Office: tse.Councilor, Party: "PT", Elected: true, Status: "ELEITO POR QP", FullName: "ÁNA  DA SILVA", BirthDate: "01/01/1980"},
-			{Year: 2024, City: "00001", CityName: "CIDADE A", UF: "SE", Office: tse.Mayor, Party: "PT", Status: "NÃO ELEITO", FullName: "ANA DA SILVA", BirthDate: "01/01/1980"},
-			// Homônima com outra data de nascimento: não é a Ana.
-			{Year: 2024, City: "00002", CityName: "CIDADE B", UF: "SE", Office: tse.Mayor, Party: "PL", Elected: true, Status: "ELEITO", FullName: "ANA DA SILVA", BirthDate: "09/09/1999"},
-			{Year: 2024, City: "00001", CityName: "CIDADE A", UF: "SE", Office: tse.Mayor, Party: "PT", Elected: true, Status: "ELEITO", Name: "ZÉ", FullName: "JOSÉ PREFEITO FILHO", BirthDate: "03/03/1970", Gender: tse.Male},
+			{ID: "r1", Date: day(2020, 11, 15), Year: 2020, City: "00001", CityName: "CIDADE A", UF: "SE", Office: tse.Councilor, Party: "PT", Elected: true, Status: "ELEITO POR QP", FullName: "ÁNA  DA SILVA", BirthDate: "01/01/1980"},
+			{ID: "r2", Date: day(2024, 10, 6), Year: 2024, City: "00001", CityName: "CIDADE A", UF: "SE", Office: tse.Mayor, Party: "PT", Status: "NÃO ELEITO", FullName: "ANA DA SILVA", BirthDate: "01/01/1980"},
+			// Homônima com outra data de nascimento: não é a Ana. Eleita em 2024 na Cidade B,
+			// mas a eleição foi refeita em 2026 (suplementar): o prefeito atual é o de 2026.
+			{ID: "r3", Date: day(2024, 10, 6), Year: 2024, City: "00002", CityName: "CIDADE B", UF: "SE", Office: tse.Mayor, Party: "PL", Elected: true, Status: "ELEITO", FullName: "ANA DA SILVA", BirthDate: "09/09/1999"},
+			{ID: "r4", Date: day(2026, 6, 7), Year: 2026, Supplementary: true, City: "00002", CityName: "CIDADE B", UF: "SE", Office: tse.Mayor, Party: "PSD", Elected: true, Status: "ELEITO", Name: "NOVO", FullName: "NOVO PREFEITO", BirthDate: "06/06/1966"},
+			{ID: "r5", Date: day(2024, 10, 6), Year: 2024, City: "00001", CityName: "CIDADE A", UF: "SE", Office: tse.Mayor, Party: "PT", Elected: true, Status: "ELEITO", Name: "ZÉ", FullName: "JOSÉ PREFEITO FILHO", BirthDate: "03/03/1970", Gender: tse.Male},
 			// Prefeito de uma eleição mais antiga não conta como prefeito atual.
-			{Year: 2020, City: "00003", CityName: "CIDADE C", UF: "SE", Office: tse.Mayor, Party: "PL", Elected: true, Status: "ELEITO", Name: "VELHO", FullName: "VELHO", BirthDate: "04/04/1950"},
-			{Year: 2020, City: "00001", CityName: "CIDADE A", UF: "SE", Office: tse.Mayor, Party: "PL", Elected: true, Status: "ELEITO", Name: "ANTIGO", FullName: "ANTIGO", BirthDate: "05/05/1955"},
+			{ID: "r6", Date: day(2020, 11, 15), Year: 2020, City: "00001", CityName: "CIDADE A", UF: "SE", Office: tse.Mayor, Party: "PL", Elected: true, Status: "ELEITO", Name: "ANTIGO", FullName: "ANTIGO", BirthDate: "05/05/1955"},
 		},
 		Cities: map[string]tse.City{
 			"00001": {Code: "00001", IBGE: "2800001", Name: "CIDADE A", UF: "SE"},
@@ -153,8 +155,8 @@ func TestBuild(t *testing.T) {
 		t.Errorf("votos da Ana = %v, quero a cidade A primeiro", ana.Votes)
 	}
 	wantHist := []runOut{
-		{Year: 2020, City: "00001", CityName: "Cidade A", UF: "SE", Office: tse.Councilor, Party: "PT", Elected: true},
-		{Year: 2024, City: "00001", CityName: "Cidade A", UF: "SE", Office: tse.Mayor, Party: "PT"},
+		{Year: 2020, Date: "2020-11-15", City: "00001", CityName: "Cidade A", UF: "SE", Office: tse.Councilor, Party: "PT", Elected: true},
+		{Year: 2024, Date: "2024-10-06", City: "00001", CityName: "Cidade A", UF: "SE", Office: tse.Mayor, Party: "PT"},
 	}
 	if !slices.Equal(ana.History, wantHist) {
 		t.Errorf("histórico da Ana = %+v\nquero %+v", ana.History, wantHist)
@@ -169,8 +171,17 @@ func TestBuild(t *testing.T) {
 	if m := uf.Cities[0].Mayor; m == nil || *m != wantMayor {
 		t.Errorf("prefeito da Cidade A = %+v, quero %+v (o de 2024, não o de 2020)", m, wantMayor)
 	}
-	if m := uf.Cities[1].Mayor; m == nil || m.Party != "PL" {
-		t.Errorf("prefeito da Cidade B = %+v", m)
+	wantB := mayorOut{Year: 2026, Supplementary: true, Name: "Novo", FullName: "Novo Prefeito", Party: "PSD"}
+	if m := uf.Cities[1].Mayor; m == nil || *m != wantB {
+		t.Errorf("prefeito da Cidade B = %+v, quero o da suplementar de 2026 %+v", m, wantB)
+	}
+	var caio struct{ NoMatch bool }
+	readJSON(t, filepath.Join(out, "c", "3.json"), &caio)
+	if !caio.NoMatch {
+		t.Errorf("Caio (sem data de nascimento) tem que vir com noMatch; veio %+v", caio)
+	}
+	if _, err := os.Stat(out + ".old"); !os.IsNotExist(err) {
+		t.Errorf("o build anterior ficou em .old (err = %v)", err)
 	}
 	if _, err := os.Stat(filepath.Join(out, "geo", "SE.json")); err != nil {
 		t.Error(err)
@@ -207,10 +218,10 @@ func TestBuildUnknownCity(t *testing.T) {
 
 func TestLocal(t *testing.T) {
 	runs := []runOut{
-		{Year: 2024, City: "1", Office: tse.Mayor},                    // perdeu para prefeito
-		{Year: 2020, City: "1", Office: tse.Councilor, Elected: true}, // vereador eleito
-		{Year: 2024, City: "1", Office: tse.Councilor, Elected: true}, // reeleito
-		{Year: 2024, City: "2", Office: tse.Mayor, Elected: true},     // outra cidade
+		{Year: 2024, Date: "2024-10-06", City: "1", Office: tse.Mayor},                    // perdeu para prefeito
+		{Year: 2020, Date: "2020-11-15", City: "1", Office: tse.Councilor, Elected: true}, // vereador eleito
+		{Year: 2024, Date: "2024-10-06", City: "1", Office: tse.Councilor, Elected: true}, // reeleito
+		{Year: 2024, Date: "2024-10-06", City: "2", Office: tse.Mayor, Elected: true},     // outra cidade
 	}
 	if got := local(runs, "1"); got == nil || *got != (localOut{Year: 2024, Office: tse.Councilor, Elected: true}) {
 		t.Errorf("local = %+v, quero vereador eleito em 2024", got)
@@ -223,11 +234,34 @@ func TestLocal(t *testing.T) {
 	}
 }
 
-func TestPersonKey(t *testing.T) {
-	if a, b := personKey("José  da Conceição", "01/01/1980"), personKey("JOSE DA CONCEICAO", "01/01/1980"); a != b {
-		t.Errorf("chaves diferentes para a mesma pessoa: %q, %q", a, b)
+func day(y, m, d int) time.Time { return time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC) }
+
+func TestOwn(t *testing.T) {
+	totals := map[string]int{"1": 1000, "2": 100, "3": 10, "4": 200}
+	byCity := map[string]int{
+		"1": 50, // 5%
+		"2": 30, // 30%
+		"3": 9,  // 90%, mas a cidade é pequena demais
+		"4": 60, // 30% também, com mais votos: vence o empate
 	}
-	if k := personKey("JOSE", ""); k != "" {
-		t.Errorf("sem data de nascimento a chave tem que ser vazia, veio %q", k)
+	city, v, total := own(byCity, totals, 50)
+	if city != "4" || v != 60 || total != 200 {
+		t.Errorf("own = %s %d/%d, quero 4 60/200", city, v, total)
+	}
+	if city, _, _ := own(map[string]int{"3": 9}, totals, 50); city != "" {
+		t.Errorf("own = %q, quero vazio quando nenhuma cidade tem o tamanho mínimo", city)
+	}
+}
+
+func TestBuildTrailingSlash(t *testing.T) {
+	in, out := fixture(t)
+	if _, err := Build(in, out+"/"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(out, "candidates.json")); err != nil {
+		t.Errorf("com barra no fim o build tem que gravar no mesmo lugar: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(out, ".tmp")); !os.IsNotExist(err) {
+		t.Errorf("temporário dentro do destino (err = %v)", err)
 	}
 }

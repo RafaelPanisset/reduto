@@ -1,6 +1,7 @@
 package site
 
 import (
+	"cmp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -30,6 +31,22 @@ func summarize(byCity map[string]int) summary {
 	return s
 }
 
+// own devolve a cidade onde o candidato teve a maior fatia dos votos do cargo, entre as cidades
+// com pelo menos min votos. Empate fica com mais votos e depois com o menor código. As frações
+// são comparadas em inteiros (a/b > c/d ⇔ a·d > c·b) para não depender de arredondamento.
+func own(byCity, totals map[string]int, min int) (city string, votes, total int) {
+	for c, v := range byCity {
+		t := totals[c]
+		if v == 0 || t < min {
+			continue
+		}
+		if city == "" || cmp.Or(cmp.Compare(v*total, votes*t), cmp.Compare(v, votes), cmp.Compare(city, c)) > 0 {
+			city, votes, total = c, v, t
+		}
+	}
+	return city, votes, total
+}
+
 // officeTotals soma, por cargo e município, os votos de todos os candidatos. É o denominador
 // de "quantos % dos votos da cidade foram para este candidato".
 func officeTotals(v *tse.Votes) map[int]map[string]int {
@@ -49,8 +66,12 @@ func officeTotals(v *tse.Votes) map[int]map[string]int {
 // Palavras que ficam em minúsculas no meio do nome: "Campos dos Goytacazes".
 var particles = map[string]bool{"de": true, "da": true, "do": true, "das": true, "dos": true, "e": true}
 
-// Algarismos romanos ficam em maiúsculas: "Pedro II".
-var romans = map[string]bool{"II": true, "III": true, "IV": true}
+// Algarismos romanos ficam em maiúsculas: "Pedro II", "Pio IX". "I" fica de fora: sozinho,
+// é mais provável que seja uma inicial.
+var romans = map[string]bool{
+	"II": true, "III": true, "IV": true, "V": true, "VI": true, "VII": true, "VIII": true,
+	"IX": true, "X": true, "XI": true, "XII": true, "XIII": true, "XIV": true, "XV": true,
+}
 
 // titleCase converte os nomes em maiúsculas do TSE: "PINGO-D'ÁGUA" → "Pingo-d'Água",
 // "MIRASSOL D'OESTE" → "Mirassol d'Oeste", "SANT'ANA DO LIVRAMENTO" → "Sant'Ana do Livramento".

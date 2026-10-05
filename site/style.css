@@ -169,5 +169,4 @@ footer h2 { font-size: 20px; color: var(--ink); margin-bottom: 8px; }
   .filters label { flex: 1; }
   .filters select { width: 100%; }
   table { font-size: 14px; }
-  th.hide-sm, td.hide-sm { display: none; }
 }

@@ -51,21 +51,21 @@ const munOffice = (office, gender) => MUNICIPAL[office][gender === 'F' ? 1 : 0];
 // "eleito vice-prefeito de Guarulhos (NOVO)" / "candidato a prefeito de Foz do Iguaçu (PP), não eleito"
 function runText(c, r) {
   const office = munOffice(r.office, c.gender);
+  const supp = r.supplementary ? ', em eleição suplementar' : '';
   return r.elected
-    ? `${gw(c, 'eleito', 'eleita')} ${office} ${de(r.cityName)} (${esc(r.party)})`
-    : `${gw(c, 'candidato', 'candidata')} a ${office} ${de(r.cityName)} (${esc(r.party)}), ${gw(c, 'não eleito', 'não eleita')}`;
+    ? `${gw(c, 'eleito', 'eleita')} ${office} ${de(r.cityName)} (${esc(r.party)})${supp}`
+    : `${gw(c, 'candidato', 'candidata')} a ${office} ${de(r.cityName)} (${esc(r.party)})${supp}, ${gw(c, 'não eleito', 'não eleita')}`;
 }
 
-// Etiqueta curta dos rankings: o que liga o candidato à cidade-reduto.
-function whyLabel(c) {
-  const l = c.local;
+// Etiqueta curta dos rankings: o que liga o candidato à cidade de que o ranking fala ("lá").
+function whyLabel(c, l = c.local, mayorParty = c.mayorParty) {
   if (l) {
     const office = munOffice(l.office, c.gender);
     return l.elected
       ? `${gw(c, 'eleito', 'eleita')} ${office} lá em ${l.year}`
       : `${gw(c, 'candidato', 'candidata')} a ${office} lá em ${l.year}, sem ganhar`;
   }
-  return c.mayorParty ? 'a prefeitura de lá é do mesmo partido' : '';
+  return mayorParty ? 'a prefeitura de lá é do mesmo partido' : '';
 }
 
 function statusLabel(c) {
@@ -200,7 +200,13 @@ let routeToken = 0;
 async function route() {
   const token = ++routeToken;
   const sec = $('#candidate');
-  const c = byId.get(decodeURIComponent(location.hash.slice(1)));
+  let id = '';
+  try {
+    id = decodeURIComponent(location.hash.slice(1));
+  } catch {
+    // link cortado no meio de um %XX: trata como candidato não encontrado
+  }
+  const c = byId.get(id);
   if (!c) {
     sec.hidden = true;
     sec.innerHTML = '';
@@ -237,7 +243,7 @@ function renderCandidate(sec, c, detail, uf, topo) {
        <p class="story">${cap(em(top.name))}, <strong>${pct(c.topVotes / c.topTotal)}</strong> dos votos para ${cargo} foram para ${esc(c.name)}.</p>`;
 
   const map = drawMap(topo, uf, office, votes, top.ibge);
-  const why = uf.cities.length === 1 ? '' : whyBlock(c, top, detail.history || []);
+  const why = uf.cities.length === 1 ? '' : whyBlock(c, top, detail);
   const rows = detail.votes.slice(0, 10).map(([tse, v]) => {
     const city = cities.get(tse);
     return `<tr><td>${esc(city.name)}</td><td class="num">${nf.format(v)}</td>
@@ -310,16 +316,22 @@ function renderCandidate(sec, c, detail, uf, topo) {
 
 // Por que aqui: o que o TSE registra sobre o candidato e a cidade-reduto. Só fatos; parentesco,
 // por exemplo, não aparece, porque sobrenome igual não prova nada. Quem lê tira a conclusão.
-function whyBlock(c, top, history) {
+function whyBlock(c, top, detail) {
+  const history = detail.history || [];
   const here = history.filter((r) => r.city === top.tse);
   const elsewhere = history.filter((r) => r.city !== top.tse);
+  // "Não encontramos", e não "não disputou": o cruzamento depende da data de nascimento, que
+  // falta em algumas candidaturas antigas. Sem ela no cadastro de 2026, nem dá para procurar.
   const items = here.length
     ? here.map((r) => `<li><b>${r.year}</b> ${runText(c, r)}</li>`)
-    : [`<li>Não disputou eleição municipal ${em(top.name)} em 2020 nem em 2024.</li>`];
+    : [detail.noMatch
+      ? `<li>O TSE não divulga a data de nascimento de ${esc(c.name)}, então não dá para procurar ${gw(c, 'o candidato', 'a candidata')} nas eleições municipais.</li>`
+      : `<li>Não encontramos candidatura de ${esc(c.name)} ${em(top.name)} nas eleições municipais de 2020 e 2024.</li>`];
   const m = top.mayor;
   if (m) {
     const same = m.party === c.party ? `, o mesmo partido de ${esc(c.name)}` : '';
-    items.push(`<li><b>${m.year}</b> ${m.gender === 'F' ? 'eleita prefeita' : 'eleito prefeito'} ${de(top.name)}:
+    const supp = m.supplementary ? ' em eleição suplementar' : '';
+    items.push(`<li><b>${m.year}</b> ${m.gender === 'F' ? 'eleita prefeita' : 'eleito prefeito'} ${de(top.name)}${supp}:
       ${esc(m.name)} (${esc(m.party)})${same}. <span class="muted">Nome completo: ${esc(m.fullName)}.</span></li>`);
   }
   if (elsewhere.length) {
@@ -329,7 +341,7 @@ function whyBlock(c, top, history) {
     <section class="why">
       <h3>Por que ${esc(top.name)}?</h3>
       <ul>${items.join('')}</ul>
-      <p class="muted small">Eleições municipais de 2020 e 2024, cruzadas pelo nome completo e pela data de nascimento no cadastro de candidatos do TSE.</p>
+      <p class="muted small">Eleições municipais de 2020 e 2024 (e as suplementares feitas depois), cruzadas pelo nome completo e pela data de nascimento no cadastro de candidatos do TSE.</p>
     </section>`;
 }
 
@@ -393,11 +405,12 @@ const RANKINGS = [
   {
     id: 'donos',
     label: 'Donos da cidade',
-    help: 'Eleitos que ficaram com a maior fatia dos votos de um município. Só entram municípios com pelo menos 10 mil votos para o cargo.',
-    filter: (c) => c.topTotal >= 10000,
-    value: (c) => c.topVotes / c.topTotal,
+    help: 'Eleitos que ficaram com a maior fatia dos votos de um município. Vale qualquer município do estado com pelo menos 10 mil votos para o cargo, não só o reduto.',
+    filter: (c) => Boolean(c.own),
+    value: (c) => c.ownVotes / c.ownTotal,
     order: -1,
-    text: (c) => `ficou com ${pct(c.topVotes / c.topTotal)} dos votos para ${OFFICES[c.office].vote} ${em(c.topName)}`,
+    text: (c) => `ficou com ${pct(c.ownVotes / c.ownTotal)} dos votos para ${OFFICES[c.office].vote} ${em(c.ownName)}`,
+    why: (c) => whyLabel(c, c.ownLocal, c.ownMayorParty),
   },
   {
     id: 'espalhados',
@@ -439,7 +452,7 @@ function setupRankings() {
         <li><button type="button" data-id="${esc(c.id)}">
           <span class="who">${esc(c.name)} <small>${esc(c.party)}/${esc(c.uf)} · ${nf.format(c.votes)} votos</small></span>
           <span class="what">${current.text(c)}</span>
-          <span class="tag">${whyLabel(c)}</span>
+          <span class="tag">${(current.why || whyLabel)(c)}</span>
           <span class="bar"><i style="width:${(100 * current.value(c)).toFixed(1)}%"></i></span>
         </button></li>`).join('');
   };
@@ -457,7 +470,7 @@ function setupRankings() {
     if (b) location.hash = b.dataset.id;
   });
   // Quantos dos eleitos "de uma cidade só" já tinham sido eleitos naquela cidade.
-  const single = all.filter((c) => c.elected && c.uf !== 'DF' && c.topVotes >= c.votes / 2);
+  const single = all.filter((c) => c.elected && c.uf !== 'DF' && c.topVotes > c.votes / 2);
   const local = single.filter((c) => c.local && c.local.elected).length;
   $('#insight').innerHTML = `Dos <strong>${nf.format(single.length)}</strong> deputados eleitos com mais da metade dos votos numa cidade só,
     <strong>${nf.format(local)} (${pct(local / single.length)})</strong> já tinham sido eleitos vereador, prefeito ou vice naquela cidade em 2020 ou 2024.`;

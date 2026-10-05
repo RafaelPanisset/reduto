@@ -33,15 +33,26 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// Das eleições municipais só interessam as candidaturas de quem disputou em 2026 e os
+	// prefeitos eleitos. Descartar o resto já na leitura poupa memória (são ~1 milhão).
+	keys := map[string]bool{}
+	for _, p := range people {
+		if k := tse.PersonKey(p.FullName, p.BirthDate); k != "" {
+			keys[k] = true
+		}
+	}
+	keep := func(r tse.Run) bool {
+		return (r.Office == tse.Mayor && r.Elected) || keys[tse.PersonKey(r.FullName, r.BirthDate)]
+	}
 	var runs []tse.Run
 	for _, path := range strings.Split(*municipal, ",") {
-		r, err := tse.ReadMunicipal(path)
+		r, err := tse.ReadMunicipal(path, keep)
 		if err != nil {
 			log.Fatal(err)
 		}
 		runs = append(runs, r...)
 	}
-	log.Printf("eleições municipais: %d candidaturas (%s)", len(runs), time.Since(start).Round(time.Millisecond))
+	log.Printf("eleições municipais: %d candidaturas guardadas (%s)", len(runs), time.Since(start).Round(time.Millisecond))
 	c, err := tse.ReadCities(*cities)
 	if err != nil {
 		log.Fatal(err)
